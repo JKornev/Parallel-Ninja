@@ -95,24 +95,26 @@ void CBruteServer::init()
 
 void CBruteServer::start()
 {
+	vector<mpi::request> reqs;
+	vector<ClientRequest> commands;
 	set<uint32_t> workers;
-	set<uint32_t>::iterator it;
 
 	time_t tstamp = time(NULL);
 	tm* t = gmtime(&tstamp);
 
 	_output << "// started " 
-		    << t->tm_mday << "." << t->tm_mon << "." << t->tm_year + 1900 << " "
-		    << t->tm_hour << ":" << t->tm_min << ":" << t->tm_sec << endl;
+		<< t->tm_mday << "." << t->tm_mon << "." << t->tm_year + 1900 << " "
+		<< t->tm_hour << ":" << t->tm_min << ":" << t->tm_sec << endl;
 	cout << "Computing beginning at " 
-		 << t->tm_mday << "." << t->tm_mon << "." << t->tm_year + 1900 << " "
-		 << t->tm_hour << ":" << t->tm_min << ":" << t->tm_sec << endl
-	     << "  module: " << get_mod_str(_config.module) << endl
-		 << "  logins: " << _parser.Count() << endl
-	     << "  passwords: " << _passwd_count << " (blocks:" << _passwds.size() << ")" << endl;
+		<< t->tm_mday << "." << t->tm_mon << "." << t->tm_year + 1900 << " "
+		<< t->tm_hour << ":" << t->tm_min << ":" << t->tm_sec << endl
+		<< "  module: " << get_mod_str(_config.module) << endl
+		<< "  logins: " << _parser.Count() << endl
+		<< "  passwords: " << _passwd_count << " (blocks:" << _passwds.size() << ")" << endl;
 
-	// fill workers
+	commands.insert(commands.begin(), _world.size() - 1, ClientRequest());
 	for (uint32_t i = 0, count = _world.size() - 1; i < count; i++) {
+		reqs.push_back( _world.irecv(i + 1, 0, commands[i]) );
 		workers.insert(i + 1);
 	}
 
@@ -121,21 +123,119 @@ void CBruteServer::start()
 	_total_counter = 0ull;
 	_timer = time(NULL);
 
-	// server loop
 	while (workers.size() > 0) {
-		dispatch(workers);
-		this_thread::sleep(posix_time::milliseconds(1));
+		std::pair<mpi::status, mpi::request*> res = mpi::wait_any(&reqs[0], &reqs[0] + reqs.size());
+		uint32_t source = res.first.source();
+		uint32_t inx = source - 1;
+
+		dispatch(workers, source, commands[inx]);
+
+		reqs[source - 1] = _world.irecv(source, 0, commands[inx]);
 	}
 
 	cout << "Computing stopped at " 
-		 << t->tm_mday << "." << t->tm_mon << "." << t->tm_year + 1900 << " "
-		 << t->tm_hour << ":" << t->tm_min << ":" << t->tm_sec << endl;
+		<< t->tm_mday << "." << t->tm_mon << "." << t->tm_year + 1900 << " "
+		<< t->tm_hour << ":" << t->tm_min << ":" << t->tm_sec << endl;
 }
 
 
-void CBruteServer::dispatch(set<uint32_t> &workers)
+void CBruteServer::dispatch(set<uint32_t> &workers, uint32_t client_rank, ClientRequest& req)
 {
-	set<uint32_t>::iterator it = workers.begin();
+	ServerStatus status;
+	WorkInfo work;
+	ApproveInfo approve;
+	uint64_t counter;
+
+	switch (req.req) {
+	case C_REQ_REG:
+
+		status = (_inited ? S_STATUS_OK : S_STATUS_FAIL);
+		_world.send(client_rank, 1, status);
+
+		if (status == S_STATUS_OK)
+			cout << "[node #" << _world.rank() << "] the node#" << client_rank << " is registered" << endl;
+		else
+			cout << "[node #" << _world.rank() << "] registration aborted for the node#" << client_rank << endl;
+
+		break;
+
+	case C_REQ_UNREG:
+
+		status = S_STATUS_OK;
+		_world.send(client_rank, 1, status);
+		workers.erase(client_rank);
+		cout << "[node #" << _world.rank() << "] the node#" << client_rank << " is unregistered" << endl;
+
+		break;
+
+	case C_REQ_WORK: {
+
+		status = (_work.size() == 0 && !next_work() ? S_STATUS_FAIL : S_STATUS_OK);
+		_world.send(client_rank, 1, status);
+
+		if (status == S_STATUS_FAIL) {
+			cout << "[node #" << _world.rank() << "] work-request canceled for the node#" << client_rank << endl;
+			break;
+		}
+
+		worker_entry& entry = _work.front();
+		work.set(
+			entry.login_inx, 
+			string(_parser[entry.login_inx]), 
+			entry.passw_inx, 
+			_passwds[entry.passw_inx].size
+		);
+		_work.pop_front();
+
+		_world.send(client_rank, 2, work);
+		cout << "[node #" << _world.rank() << "] work is sended to the node#" << client_rank 
+			<< " (index: " << work.inx << ")" << endl;
+
+	} break;
+
+	case C_REQ_APPROVE:
+
+		status = S_STATUS_OK;
+		_world.send(client_rank, 1, status);
+
+		_world.recv(client_rank, 2, approve);
+		_output << approve.login << ":" << approve.passwd << endl;
+
+		_found_counter++;
+
+		// broadcast cancel work
+		/*			for (set<uint32_t>::iterator entry = workers.begin(); entry != workers.end(); entry++) {
+			if (*entry == client_rank)
+				continue;
+			_world.send(*entry, 5, command.set(S_REQ_CANCEL, approve.inx));
+		}*/
+
+			cout << "[node #" << _world.rank() << "] found login:" << approve.login 
+			<< " password:" << approve.passwd << " index:" << approve.inx << " rank:" << client_rank << endl;
+
+		break;
+
+	case C_REQ_COUNTER:
+
+		status = S_STATUS_OK;
+		_world.send(client_rank, 1, status);
+		_world.recv(client_rank, 2, counter);
+
+		_counter[client_rank - 1] = counter;
+
+		cout << "[node #" << _world.rank() << "] counter " << counter << " from rank:" << client_rank << endl;
+
+		break;
+
+	default:
+		cout << "[node #" << _world.rank() << "] unknown request " 
+			<< "(source:" << client_rank << " request:" << req.req << " value:" << req.val << ")" << endl;
+		break;
+	}
+
+	check_counters();
+
+	/*set<uint32_t>::iterator it = workers.begin();
 
 	for (uint32_t i = 0, count = workers.size(); i < count; i++) {
 		uint32_t client_rank = *it;
@@ -214,11 +314,11 @@ void CBruteServer::dispatch(set<uint32_t> &workers)
 			_found_counter++;
 
 			// broadcast cancel work
-/*			for (set<uint32_t>::iterator entry = workers.begin(); entry != workers.end(); entry++) {
+/ *			for (set<uint32_t>::iterator entry = workers.begin(); entry != workers.end(); entry++) {
 				if (*entry == client_rank)
 					continue;
 				_world.send(*entry, 5, command.set(S_REQ_CANCEL, approve.inx));
-			}*/
+			}* /
 
 			cout << "[node #" << _world.rank() << "] found login:" << approve.login 
 				 << " password:" << approve.passwd << " index:" << approve.inx << " rank:" << client_rank << endl;
@@ -244,22 +344,23 @@ void CBruteServer::dispatch(set<uint32_t> &workers)
 		}
 	}
 
-	check_counters();
+	check_counters();*/
 }
 
 void CBruteServer::check_counters()
 {
+	enum { COUNTER_REFRESH_TIME = 60 };
 	time_t tm = time(NULL);
 
-	if (tm - _timer < 10)
+	if (tm - _timer < COUNTER_REFRESH_TIME)
 		return;
 
 	uint64_t counter = 0;
 	for (uint32_t i = 0, count = _counter.size(); i < count; i++)
 		counter += _counter[i];
 
-	cout << "Statisctics: processed " << counter << ", found " << _found_counter 
-		<< ", speed " << (counter -  _total_counter) << " login/min" << endl;
+	cout << "Statistics: processed " << counter << ", found " << _found_counter 
+		<< ", speed " << (counter -  _total_counter) << " passwd/min" << endl;
 
 	_total_counter = counter;
 	_timer = tm;

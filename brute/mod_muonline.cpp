@@ -40,7 +40,7 @@ void CModMuonline::init(boost::property_tree::ptree &cfg)
 		throw std::exception("can't load auth keys");
 
 	_protocol = cfg.get<uint8_t>("MuOnline.gs_protocol");
-	if (_protocol != PROTOCOL_GMO && _protocol != PROTOCOL_KOR)
+	if (_protocol > PROTOCOL_V3)
 		throw std::exception("unknown gs protocol");
 }
 
@@ -68,8 +68,9 @@ int CModMuonline::gs_login(string& login, string& passwd)
 	ip::tcp::socket sock(_service);
 	system::error_code err;
 	PMSG_JOINRESULT* packet_join;
-	PMSG_IDPASS packet_idpass = {};
-	PMSG_IDPASS_EX packet_idpass_ex = {};
+	PMSG_IDPASS_V1 packet_idpass_v1;
+	PMSG_IDPASS_V2 packet_idpass_v2;
+	PMSG_IDPASS_V3 packet_idpass_v3;
 	PMSG_RESULT* packet_res;
 	uint32_t readed, size;
 	char data[256];
@@ -84,17 +85,17 @@ int CModMuonline::gs_login(string& login, string& passwd)
 	if (readed < sizeof(PMSG_JOINRESULT) || err == error::eof)
 		return E_CONN_ERROR;
 
-/*	for (int i = 0; i < readed; i++) // TODEL espada encryption
-		data[i] ^= 0xF4;*/
-
 	packet_join = reinterpret_cast<PMSG_JOINRESULT*>(data);
 
-	if (_protocol == PROTOCOL_KOR) {
-		size = prepare_login_packet<PMSG_IDPASS>(
-			packet_idpass, data, login.c_str(), passwd.c_str(), (char*)packet_join->CliVersion, _serial.c_str());
+	if (_protocol == PROTOCOL_V1) {
+		size = prepare_login_packet<PMSG_IDPASS_V1>(
+			packet_idpass_v1, data, login.c_str(), passwd.c_str(), (char*)packet_join->CliVersion, _serial.c_str());
+	} else if (_protocol == PROTOCOL_V2) {
+		size = prepare_login_packet<PMSG_IDPASS_V2>(
+			packet_idpass_v2, data, login.c_str(), passwd.c_str(), (char*)packet_join->CliVersion, _serial.c_str());
 	} else {
-		size = prepare_login_packet<PMSG_IDPASS_EX>(
-			packet_idpass_ex, data, login.c_str(), passwd.c_str(), (char*)packet_join->CliVersion, _serial.c_str());
+		size = prepare_login_packet<PMSG_IDPASS_V3>(
+			packet_idpass_v3, data, login.c_str(), passwd.c_str(), (char*)packet_join->CliVersion, _serial.c_str());
 	}
 
 	write(sock, buffer(data, size), err);
@@ -108,9 +109,6 @@ int CModMuonline::gs_login(string& login, string& passwd)
 
 	if (readed != 5)
 		return false;
-
-/*	for (int i = 0; i < readed; i++) // TODEL espada encryption
-		data[i] ^= 0xF4;*/
 
 	packet_res = reinterpret_cast<PMSG_RESULT*>(data);
 	return packet_res->result == 1 ? E_FOUND : E_NOT_FOUND;

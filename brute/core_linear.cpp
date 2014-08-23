@@ -116,6 +116,7 @@ bool CLinearCore::get_work_from_queue(ApproveInfo& work)
 bool CLinearCore::worker_entry(uint32_t inx)
 {
 	ApproveInfo work;
+	bool res ;
 
 	this_thread::sleep( posix_time::milliseconds(1) );//TOFIX
 	//{ lock_guard<mutex> locker(_queue_mutex); } // locked if queue is empty
@@ -123,7 +124,13 @@ bool CLinearCore::worker_entry(uint32_t inx)
 	if (!get_work_from_queue(work))
 		return _enabled;
 
-	bool res = _mod.try_login(work);
+	// requests can be overlapped on MU gameserver, so we need retry for remove incorrect results
+	for (int i = 0; i < 3; i++) {
+		res = _mod.try_login(work);
+		if (!res)
+			break;
+	}
+	
 
 	lock_guard<mutex> lock(_access_mutex);
 	_counter++;

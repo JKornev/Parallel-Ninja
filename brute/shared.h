@@ -5,7 +5,7 @@
 #include <boost/asio.hpp>
 #include <boost/property_tree/ptree.hpp>
 
-#if defined(_DEBUG)
+#if !defined(_DEBUG)
 # define debug(msg) std::cout << msg << std::endl;
 #else
 # define debug(msg) 

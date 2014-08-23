@@ -18,8 +18,9 @@ public:
 	};
 
 	enum {
-		PROTOCOL_KOR = 0,
-		PROTOCOL_GMO = 1,
+		PROTOCOL_V1 = 0,
+		PROTOCOL_V2 = 1,
+		PROTOCOL_V3 = 2,
 	};
 
 	CModMuonline();

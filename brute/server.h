@@ -44,7 +44,7 @@ private:
 	time_t _timer;
 
 private:
-	void dispatch(std::set<uint32_t> &workers);
+	void dispatch(std::set<uint32_t>& workers, uint32_t source, ClientRequest& req);
 	void check_counters();
 
 	bool next_work();

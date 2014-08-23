@@ -37,7 +37,7 @@ typedef struct _PMSG_JOINRESULT
 	BYTE CliVersion[5];	// 7
 } PMSG_JOINRESULT, *pPMSG_JOINRESULT;
 
-struct PMSG_IDPASS
+struct PMSG_IDPASS_V1
 {
 	PBMSG_HEAD h;
 	BYTE subcode;	// 3
@@ -48,7 +48,18 @@ struct PMSG_IDPASS
 	BYTE CliSerial[16];	// 21  
 };
 
-struct PMSG_IDPASS_EX
+struct PMSG_IDPASS_V2
+{
+	PBMSG_HEAD h;
+	BYTE subcode;	// 3
+	char Id[10];	// 4
+	char Pass[12];	// E
+	DWORD TickCount;	// 18
+	BYTE CliVersion[5];	// 1C
+	BYTE CliSerial[16];	// 21  
+};
+
+struct PMSG_IDPASS_V3
 {
 	PBMSG_HEAD h;
 	BYTE subcode;	// 3
