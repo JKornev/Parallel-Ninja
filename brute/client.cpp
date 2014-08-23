@@ -222,7 +222,7 @@ void CBruteClient::send_command(ClientRequest& req, ServerStatus& status)
 void CBruteClient::check_counter()
 {
 	time_t tm = time(NULL);
-	if (tm - _timer < 1) {
+	if (tm - _timer < 25) {
 		return;
 	}
 	_timer = tm;
