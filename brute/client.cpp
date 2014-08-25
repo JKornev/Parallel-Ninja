@@ -31,7 +31,7 @@ void CBruteClient::init()
 	_inited = false;
 
 	broadcast(_world, cfg, 0);
-
+	
 	if (!cfg.IsInited())
 		return;
 
@@ -221,8 +221,9 @@ void CBruteClient::send_command(ClientRequest& req, ServerStatus& status)
 
 void CBruteClient::check_counter()
 {
+	enum { COUNTER_RESEND_TIME = 60 };
 	time_t tm = time(NULL);
-	if (tm - _timer < 25) {
+	if (tm - _timer < 15) {
 		return;
 	}
 	_timer = tm;

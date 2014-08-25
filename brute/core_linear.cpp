@@ -43,6 +43,8 @@ bool CLinearCore::put_work(WorkInfo& work)
 	if (work.passwd_inx + work.passwd_count > _parser.Count())
 		return false;
 
+	work.flags = (work.passwd_inx == 0 ? 1 : 0);
+
 	_works.push_back(work);
 	//_queue_mutex.unlock();
 	return true;
@@ -97,10 +99,16 @@ bool CLinearCore::get_work_from_queue(ApproveInfo& work)
 	list<WorkInfo>::iterator it = _works.begin();
 	work.inx = it->inx;
 	work.login = it->login;
-	work.passwd = _parser[it->passwd_inx];
-	it->passwd_count--;
-	it->passwd_inx++;
 
+	if (it->flags == 1) {
+		work.passwd = it->login;
+		it->flags = 0;
+	} else {
+		work.passwd = _parser[it->passwd_inx];
+		it->passwd_count--;
+		it->passwd_inx++;
+	}
+	
 	if (it->passwd_count == 0) {
 		_works.erase(it);
 		/*if (_works.size() == 0) {
@@ -130,7 +138,6 @@ bool CLinearCore::worker_entry(uint32_t inx)
 		if (!res)
 			break;
 	}
-	
 
 	lock_guard<mutex> lock(_access_mutex);
 	_counter++;

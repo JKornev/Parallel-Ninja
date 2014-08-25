@@ -52,7 +52,7 @@ bool CModMuonline::check_login(std::string& login)
 
 bool CModMuonline::try_login(ApproveInfo& work)
 {
-	enum { MAX_RECONNECTS = 10 };
+	enum { MAX_RECONNECTS = 50 };
 	for (int i = 0; i < MAX_RECONNECTS; i++) {
 		int res = gs_login(work.login, work.passwd);
 		if (res == E_FOUND)

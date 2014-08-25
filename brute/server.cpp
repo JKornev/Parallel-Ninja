@@ -25,7 +25,7 @@ CBruteServer::CBruteServer(boost::mpi::environment& e, boost::mpi::communicator&
 
 void CBruteServer::init()
 {
-	enum { PasswdBlockSize = 100 };
+	enum { PASSWORD_BLOCK_SIZE = 1000 };
 
 	_inited = false;
 
@@ -76,17 +76,17 @@ void CBruteServer::init()
 
 	_world.recv(1, 0, _passwd_count);
 
-	blocks_count = _passwd_count / PasswdBlockSize;
+	blocks_count = _passwd_count / PASSWORD_BLOCK_SIZE;
 	_passwds.reserve(blocks_count + 1);
 
 	for (uint32_t i = 0; i < blocks_count; i++) {
-		range.start = i * PasswdBlockSize;
-		range.size = PasswdBlockSize;
+		range.start = i * PASSWORD_BLOCK_SIZE;
+		range.size = PASSWORD_BLOCK_SIZE;
 		_passwds.push_back(range);
 	}
-	if (_passwd_count % PasswdBlockSize > 0) {
-		range.start = blocks_count * PasswdBlockSize;
-		range.size = _passwd_count % PasswdBlockSize;
+	if (_passwd_count % PASSWORD_BLOCK_SIZE > 0) {
+		range.start = blocks_count * PASSWORD_BLOCK_SIZE;
+		range.size = _passwd_count % PASSWORD_BLOCK_SIZE;
 		_passwds.push_back(range);
 	}
 
@@ -182,14 +182,14 @@ void CBruteServer::dispatch(set<uint32_t> &workers, uint32_t client_rank, Client
 		work.set(
 			entry.login_inx, 
 			string(_parser[entry.login_inx]), 
-			entry.passw_inx, 
+			_passwds[entry.passw_inx].start, 
 			_passwds[entry.passw_inx].size
 		);
 		_work.pop_front();
 
 		_world.send(client_rank, 2, work);
 		cout << "[node #" << _world.rank() << "] work is sended to the node#" << client_rank 
-			<< " (index: " << work.inx << ")" << endl;
+			<< " (index: " << work.inx << ")" << " pass " << work.passwd_inx << " count " << work.passwd_count << endl;
 
 	} break;
 
@@ -210,7 +210,7 @@ void CBruteServer::dispatch(set<uint32_t> &workers, uint32_t client_rank, Client
 			_world.send(*entry, 5, command.set(S_REQ_CANCEL, approve.inx));
 		}*/
 
-			cout << "[node #" << _world.rank() << "] found login:" << approve.login 
+		cout << "[node #" << _world.rank() << "] found login:" << approve.login 
 			<< " password:" << approve.passwd << " index:" << approve.inx << " rank:" << client_rank << endl;
 
 		break;
@@ -234,117 +234,6 @@ void CBruteServer::dispatch(set<uint32_t> &workers, uint32_t client_rank, Client
 	}
 
 	check_counters();
-
-	/*set<uint32_t>::iterator it = workers.begin();
-
-	for (uint32_t i = 0, count = workers.size(); i < count; i++) {
-		uint32_t client_rank = *it;
-		it++;
-
-		//cout << i << endl;
-
-		optional<mpi::status> opt = _world.iprobe(client_rank, 0);
-		if (!opt.is_initialized())
-			continue;
-
-		// receive command
-		ClientRequest command;
-		ServerStatus status;
-		WorkInfo work;
-		ApproveInfo approve;
-		uint64_t counter;
-
-		_world.recv(client_rank, 0, command);
-
-		switch (command.req) {
-		case C_REQ_REG:
-
-			status = (_inited ? S_STATUS_OK : S_STATUS_FAIL);
-			_world.send(client_rank, 1, status);
-
-			if (status == S_STATUS_OK)
-				cout << "[node #" << _world.rank() << "] the node#" << client_rank << " is registered" << endl;
-			else
-				cout << "[node #" << _world.rank() << "] registration aborted for the node#" << client_rank << endl;
-
-			break;
-
-		case C_REQ_UNREG:
-
-			status = S_STATUS_OK;
-			_world.send(client_rank, 1, status);
-			workers.erase(client_rank);
-			cout << "[node #" << _world.rank() << "] the node#" << client_rank << " is unregistered" << endl;
-
-			break;
-
-		case C_REQ_WORK: {
-
-			status = (_work.size() == 0 && !next_work() ? S_STATUS_FAIL : S_STATUS_OK);
-			_world.send(client_rank, 1, status);
-
-			if (status == S_STATUS_FAIL) {
-				cout << "[node #" << _world.rank() << "] work-request canceled for the node#" << client_rank << endl;
-				break;
-			}
-
-			worker_entry& entry = _work.front();
-			work.set(
-				entry.login_inx, 
-				string(_parser[entry.login_inx]), 
-				entry.passw_inx, 
-				_passwds[entry.passw_inx].size
-			);
-			_work.pop_front();
-
-			_world.send(client_rank, 2, work);
-			cout << "[node #" << _world.rank() << "] work is sended to the node#" << client_rank 
-				<< " (index: " << work.inx << ")" << endl;
-
-			} break;
-
-		case C_REQ_APPROVE:
-
-			status = S_STATUS_OK;
-			_world.send(client_rank, 1, status);
-
-			_world.recv(client_rank, 2, approve);
-			_output << approve.login << ":" << approve.passwd << endl;
-
-			_found_counter++;
-
-			// broadcast cancel work
-/ *			for (set<uint32_t>::iterator entry = workers.begin(); entry != workers.end(); entry++) {
-				if (*entry == client_rank)
-					continue;
-				_world.send(*entry, 5, command.set(S_REQ_CANCEL, approve.inx));
-			}* /
-
-			cout << "[node #" << _world.rank() << "] found login:" << approve.login 
-				 << " password:" << approve.passwd << " index:" << approve.inx << " rank:" << client_rank << endl;
-
-			break;
-
-		case C_REQ_COUNTER:
-
-			status = S_STATUS_OK;
-			_world.send(client_rank, 1, status);
-			_world.recv(client_rank, 2, counter);
-
-			_counter[client_rank - 1] = counter;
-
-			cout << "[node #" << _world.rank() << "] counter " << counter << " from rank:" << client_rank << endl;
-
-			break;
-
-		default:
-			cout << "[node #" << _world.rank() << "] unknown request " 
-				 << "(source:" << client_rank << " request:" << command.req << " value:" << command.val << ")" << endl;
-			break;
-		}
-	}
-
-	check_counters();*/
 }
 
 void CBruteServer::check_counters()

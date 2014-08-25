@@ -141,12 +141,14 @@ typedef struct _ClientRequest {
 } ClientRequest, *pClientRequest;
 
 #define WORKING_SET_SIZE 10
+#define FIRST_INX_BIT 0x80000000
 
 typedef struct _WorkInfo {
 	uint32_t inx;
 	std::string login;
 	uint32_t passwd_inx;
 	uint32_t passwd_count;
+	uint32_t flags;
 
 	_WorkInfo& set(uint32_t i, std::string& l, uint32_t pi, uint32_t ps)
 		{ inx = i; login = l; passwd_inx = pi; passwd_count = ps; return *this; }
