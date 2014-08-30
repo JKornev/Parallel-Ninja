@@ -103,14 +103,17 @@ int CModMuonline::gs_login(string& login, string& passwd)
 		return E_CONN_ERROR;
 
 	// recv result
-	readed = read(sock, buffer(data, 5), err);
+	readed = read(sock, buffer(data, sizeof(PMSG_RESULT)), err);
 	if (err == error::eof)
 		return E_CONN_ERROR; // Connection closed
 
-	if (readed != 5)
-		return false;
+	if (readed != sizeof(PMSG_RESULT))
+		return E_CONN_ERROR;
 
 	packet_res = reinterpret_cast<PMSG_RESULT*>(data);
+	if (packet_res->h.c != 0xC1 || packet_res->h.headcode != 0xF1 || packet_res->subcode != 0x01)
+		return E_CONN_ERROR;
+
 	return packet_res->result == 1 ? E_FOUND : E_NOT_FOUND;
 }
 

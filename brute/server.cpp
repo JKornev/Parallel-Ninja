@@ -223,7 +223,7 @@ void CBruteServer::dispatch(set<uint32_t> &workers, uint32_t client_rank, Client
 
 		_counter[client_rank - 1] = counter;
 
-		cout << "[node #" << _world.rank() << "] counter " << counter << " from rank:" << client_rank << endl;
+	//	cout << "[node #" << _world.rank() << "] counter " << counter << " from rank:" << client_rank << endl;
 
 		break;
 

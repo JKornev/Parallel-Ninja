@@ -133,11 +133,14 @@ bool CLinearCore::worker_entry(uint32_t inx)
 		return _enabled;
 
 	// requests can be overlapped on MU gameserver, so we need retry for remove incorrect results
-	for (int i = 0; i < 3; i++) {
+	// UPD: maybe this trouble only on x64 executables
+	/*for (int i = 0; i < 3; i++) {
 		res = _mod.try_login(work);
 		if (!res)
 			break;
-	}
+	}*/
+
+	res = _mod.try_login(work);
 
 	lock_guard<mutex> lock(_access_mutex);
 	_counter++;
